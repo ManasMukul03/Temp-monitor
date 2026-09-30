@@ -1,0 +1,24 @@
+# Kernel module build files
+*.o
+*.ko
+*.mod
+*.mod.c
+*.cmd
+.*.cmd
+Module.symvers
+modules.order
+.tmp_versions/
+
+# Application build files
+app/tempmon
+tests/test_*
+!tests/test_*.cpp
+build/
+
+# Runtime output
+*.log
+*.csv
+
+# Editor
+.vscode/
+tests/driver_test
