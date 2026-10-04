@@ -22,3 +22,4 @@ build/
 # Editor
 .vscode/
 tests/driver_test
+tests/app_test
