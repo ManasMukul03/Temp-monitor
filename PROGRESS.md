@@ -32,3 +32,28 @@
 **Next (1 Oct)**
 - C++ application core: SensorDevice, AlertManager, TemperatureHistory
 - MonitorEngine thread
+
+## 4 Oct 2026 — Stage 4 prototype
+**Done**
+- Repeated all driver tests manually (M1–M13) and saved screenshots 01–05
+- C++ application in `app/`: SensorDevice (system calls), AlertManager, CoolingController, TemperatureHistory, MonitorEngine thread, LoggerProcess (fork + pipe), SystemInfo, ReportExporter, console menu with Ctrl+C handling
+- Application tests (`tests/app_test.cpp`): 21 passed
+- Branch `feature/app` created and merged into `develop`
+
+**Issues & solutions**
+- `insmod: File exists`: driver was already loaded; continued without reloading
+- Host C: drive filled up and VirtualBox paused the VM: freed space on the host and resumed
+
+**Next (5 Oct)**
+- System tests with the real driver, Stage 4–6 documents, final README
+
+## 5 Oct 2026 — Stage 5 & 6
+**Done**
+- System tests with the driver: automatic cooling observed live (60.25 °C → fan ON → 44.82 °C → fan OFF)
+- Session statistics: 392 readings, max 60.92 °C (69.07 °C without protection), 5 automatic fan activations, recovery ≈ 2 s
+- Screenshots 06–12
+- Documents: `04_Prototype_Log.md`, `05_Testing.md`, `06_Final_Summary.md`; README updated
+- All 56 tests passed
+
+**Next**
+- Project evaluation with the trainer
