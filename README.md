@@ -1,195 +1,174 @@
 # 🌡️ Virtual Temperature Monitoring & Protection System
 
-**A Linux character device driver with a multithreaded C++ monitoring application**
+A Linux project that **watches a device's temperature and cools it down automatically when it gets too hot**.
 
-Author: **Manas Mukul** · Wipro Training – Batch 3 · ITER, SOA University
-Platform: Ubuntu 26.04 LTS · Linux kernel 7.0 · C (driver) · C++17 (application)
+It has two parts:
+
+- a **Linux device driver** (written in C) that acts like a temperature sensor and a cooling fan, and
+- a **C++ application** that monitors the temperature and switches the fan on and off by itself.
+
+**Author:** Manas Mukul · Wipro Training, Batch 3 · ITER, SOA University
+**Built on:** Ubuntu 26.04 · Linux kernel 7.0 · C · C++17
 
 ---
 
-## 📌 Overview
+## 📌 The Problem
 
-Overheating is one of the main causes of hardware failure: it damages components, causes unexpected shutdowns and can be a safety risk in servers, industrial machines and vehicles. Devices need **continuous, automatic temperature monitoring that also takes corrective action**.
+Electronic devices like servers, machines and car engines get hot. If nobody notices in time, **overheating damages the hardware and makes systems shut down suddenly**.
 
-This project builds such a system the way real embedded systems do it:
+A person cannot watch a thermometer all day. So we need a system that does it automatically.
 
-- A **Linux kernel driver** exposes a temperature sensor and a cooling fan as the device `/dev/tempsensor`.
-- A **C++ application** reads the sensor through system calls, raises alerts, **switches the fan on automatically** when the temperature becomes critical, and logs every event as proof.
+## 💡 The Solution
 
-The sensor and fan are **simulated inside the driver** (approved by the trainer). Because the design follows real hardware (registers, `read`, `ioctl`), a physical sensor can replace the simulation by changing one driver function.
+This project repeats four steps every second:
 
-**Core cycle:** sense → decide → act → record
+| Step | What happens |
+|------|--------------|
+| 1. **Sense** | Read the temperature from the sensor |
+| 2. **Decide** | Is it **Normal** (below 45 °C), **Warning** (45–60 °C) or **Critical** (above 60 °C)? |
+| 3. **Act** | If it is **Critical**, switch the **fan ON**. When it is **Normal** again, switch it **OFF** |
+| 4. **Record** | Save every reading and event in a log file as proof |
 
-## ✨ Features
-
-| Feature | Status |
-|---------|--------|
-| Character device `/dev/tempsensor` created automatically on load | ✅ |
-| Simulated sensor with CTRL / STATUS / DATA / INTERVAL registers | ✅ |
-| Kernel timer producing a new reading every interval | ✅ |
-| `ioctl` commands: interval, status, statistics, reset, enable, cooling fan | ✅ |
-| Register dump at `/proc/tempsensor` | ✅ |
-| Automated driver tests (11 tests) | ✅ |
-| C++ monitoring app: live display, Normal / Warning / Critical alerts | ✅ |
-| Automatic cooling control (fan on at > 60 °C, off below 45 °C) | ✅ |
-| Logger process (`fork` + `pipe`), clean shutdown on Ctrl+C | ✅ |
-| Statistics, history, system info, CSV report | ✅ |
-| Automated application tests (21 unit + integration tests) | ✅ |
+> The sensor and fan are **simulated in software** inside the driver, because no physical hardware was used. This was approved by the trainer. The design works exactly like real hardware, so a real sensor could be connected later by changing **one function** in the driver.
 
 ## 📊 Results
 
-| | Value |
+| | |
 |---|---|
-| Maximum temperature **without** protection | 69.07 °C |
-| Maximum temperature **with** automatic cooling | **60.92 °C** |
-| Recovery time Critical → Normal | ≈ 2 s |
-| Tests passed | **56 / 56** |
+| Highest temperature **without** protection | **69.07 °C** 🔥 |
+| Highest temperature **with** automatic cooling | **60.92 °C** ✅ |
+| Time to cool from Critical back to Normal | about **2 seconds** |
+| Tests passed | **56 out of 56** |
 
-Every time the temperature crossed 60 °C, the application switched the fan on at the next reading and the device returned to normal.
-
-## 🏗️ Architecture
+Real example from the log file:
 
 ```
-┌───────────────────── USER SPACE ─────────────────────┐
-│  C++ Monitoring App                                   │
-│   MonitorEngine (thread) → AlertManager               │
-│                          → CoolingController          │
-│                          → Logger process (pipe)      │
-└──────────────────────────┬───────────────────────────┘
-          system calls: open · read · ioctl · close
-┌──────────────────────────▼──── KERNEL SPACE ─────────┐
-│  /dev/tempsensor  (character device, major/minor)    │
-│  tempsensor driver: file_operations                  │
-│  Registers: CTRL · STATUS · DATA · INTERVAL          │
-│  Kernel timer → simulated sensor + cooling fan       │
-└──────────────────────────────────────────────────────┘
+00:44:25  ALERT WARNING -> CRITICAL at 60.43 C
+00:44:25  FAN ON (automatic) - critical temperature
+00:44:27  ALERT WARNING -> NORMAL at 44.98 C
+00:44:27  FAN OFF (automatic) - temperature back to normal, recovered in 2.0 s
 ```
 
-Full design with UML diagrams: [`docs/03_Design.md`](docs/03_Design.md)
+**Automatic cooling in action** (red = critical, fan switches on, then off when normal):
 
-## 🧠 Concepts Demonstrated
+![Automatic cooling](docs/screenshots/07_auto_cooling.png)
 
-| Area | Concepts |
-|------|----------|
-| Linux | Shell, `make`, `insmod`, `rmmod`, `dmesg`, `lsmod`, `/dev`, `/proc` |
-| Device drivers | Kernel module, character device, major/minor numbers, `file_operations`, kernel timer, `ioctl`, `copy_to_user`, spinlock |
-| System programming | System calls, threads, mutex, signals, `fork`, `pipe` |
-| C++ | Classes, interface + inheritance, STL, file handling, multi-file project |
-| Computer architecture | Device registers, user mode vs kernel mode, CPU/memory information |
-| Hardware & software | How a system call travels from an application to a device |
-
-## 📁 Repository Structure
+## 🏗️ How It Works
 
 ```
-temp-monitor/
-├── driver/
-│   ├── tempsensor.c          # Kernel driver (C)
-│   ├── tempsensor_ioctl.h    # Shared interface: register bits, ioctl commands
-│   └── Makefile              # Builds the kernel module
-├── app/                      # C++ monitoring application
-│   ├── main.cpp              # Menu, live view, Ctrl+C handling
-│   ├── MonitorEngine.*       # Background thread: sense → decide → act → record
-│   ├── SensorDevice.*        # System calls on /dev/tempsensor
-│   ├── AlertManager.*        # Normal / Warning / Critical
-│   ├── CoolingController.*   # Automatic fan control
-│   ├── TemperatureHistory.*  # History and statistics
-│   ├── LoggerProcess.*       # Logger child process (fork + pipe)
-│   ├── SystemInfo.*          # CPU / memory / architecture info
-│   ├── ReportExporter.*      # CSV export
-│   ├── ITemperatureSource.h  # Sensor interface
-│   ├── MockSensor.h          # Fake sensor for tests
-│   └── Makefile
-├── tests/
-│   ├── driver_test.cpp       # Automated driver tests
-│   └── app_test.cpp          # Application unit + integration tests
-├── docs/
-│   ├── 01_Introduction.md    # Stage 1 – Project introduction
-│   ├── 02_PRD.md             # Stage 2 – Requirements & development plan
-│   ├── 03_Design.md          # Stage 3 – Architecture, UML, environment setup
-│   ├── 04_Prototype_Log.md   # Stage 4 – Implementation & prototype
-│   ├── 05_Testing.md         # Stage 5 – Testing & improvement
-│   ├── 06_Final_Summary.md   # Stage 6 – Final summary
-│   └── screenshots/          # Progress evidence
-├── PROGRESS.md               # Daily progress log
-└── README.md
+   ┌──────────────────────────────────────────┐
+   │        C++ APPLICATION  (tempmon)         │   ← normal program (user space)
+   │  reads temperature · decides · controls   │
+   │  fan · logs events · shows a menu         │
+   └────────────────────┬─────────────────────┘
+                        │  system calls
+                        │  (open, read, ioctl, close)
+   ┌────────────────────▼─────────────────────┐
+   │      /dev/tempsensor  (device file)       │   ← the "door" to the driver
+   └────────────────────┬─────────────────────┘
+                        │
+   ┌────────────────────▼─────────────────────┐
+   │   DRIVER  (tempsensor.ko, inside Linux)   │   ← kernel space
+   │  simulated sensor + cooling fan           │
+   │  registers: CTRL · STATUS · DATA · INTERVAL│
+   └──────────────────────────────────────────┘
+```
+
+**Why a driver?** Normal programs are **not allowed to control hardware directly**. They must ask the Linux kernel using **system calls**, and the kernel passes the request to the **driver**, which controls the device. This is how every real device works, from keyboards to Wi-Fi cards.
+
+### The two parts
+
+**1. The driver (`driver/`)** – runs inside the Linux kernel
+- When loaded, it creates the device file **`/dev/tempsensor`** and a debug file **`/proc/tempsensor`**
+- A timer creates a new temperature reading every second
+- The fan is one switch (a bit) in the CTRL register; when it is on, the temperature goes down
+- The app can read the temperature (`read`) and send commands like "fan on" (`ioctl`)
+
+**2. The C++ application (`app/`)** – a normal program with a menu
+- A **background thread** keeps monitoring, so the menu always stays usable
+- Turns the fan **on at Critical** and **off at Normal** automatically
+- A **separate logger process** writes everything to `tempmon.log`
+- **Ctrl+C** shuts everything down safely, without losing data
+- Shows statistics, system information (CPU, memory) and exports a CSV report
+
+Detailed design with diagrams: [`docs/03_Design.md`](docs/03_Design.md)
+
+## 📁 Project Structure
+
+```
+Temp-monitor/
+├── driver/                 Linux driver (C)
+│   ├── tempsensor.c          the driver
+│   ├── tempsensor_ioctl.h    commands shared by driver and app
+│   └── Makefile              builds the driver
+├── app/                    C++ application
+│   ├── main.cpp              menu and Ctrl+C handling
+│   ├── MonitorEngine         background thread: sense → decide → act → record
+│   ├── SensorDevice          talks to /dev/tempsensor
+│   ├── AlertManager          Normal / Warning / Critical
+│   ├── CoolingController     switches the fan
+│   ├── TemperatureHistory    stores readings, min / max / average
+│   ├── LoggerProcess         separate process that writes the log
+│   ├── SystemInfo            CPU and memory information
+│   ├── ReportExporter        saves a CSV report
+│   └── Makefile              builds the app
+├── tests/                  automatic tests
+│   ├── driver_test.cpp       11 driver tests
+│   └── app_test.cpp          21 application tests
+├── docs/                   documents for all 6 stages + screenshots
+├── PROGRESS.md             daily progress log
+└── README.md               this file
 ```
 
 ## ⚙️ Requirements
 
-- Ubuntu 26.04 LTS (or any Linux with kernel headers), tested on kernel 7.0.0-30-generic
-- Secure Boot disabled (self-built modules are unsigned)
-- Packages:
+- **Ubuntu Linux** (tested on Ubuntu 26.04, kernel 7.0)
+- **Secure Boot turned off** (needed to load a self-built driver)
+- Install the tools once:
 
 ```bash
 sudo apt update
 sudo apt install -y build-essential linux-headers-$(uname -r) git
 ```
 
-## 🚀 Build & Run
+## 🚀 How to Run
 
-### 1. Get the code
+### Step 1 – Download the project
 
 ```bash
 git clone https://github.com/ManasMukul03/Temp-monitor.git
 cd Temp-monitor
 ```
 
-### 2. Build and load the driver
+### Step 2 – Build and load the driver
 
 ```bash
 cd driver
 make                          # builds tempsensor.ko
-sudo insmod tempsensor.ko     # loads the driver, creates /dev/tempsensor
-sudo dmesg | tail -3          # "tempsensor: loaded, /dev/tempsensor major=... minor=0"
+sudo insmod tempsensor.ko     # loads the driver into Linux
 ```
 
-Optional: choose the sampling interval when loading:
+Check that it worked:
 
 ```bash
-sudo insmod tempsensor.ko interval_ms=500
+sudo dmesg | tail -3          # should say: "tempsensor: loaded"
+ls -l /dev/tempsensor         # the device file now exists
+cat /dev/tempsensor           # shows the temperature, e.g. 36250 = 36.25 °C
+cat /proc/tempsensor          # shows all the driver's registers
 ```
 
-### 3. Check the device
-
-```bash
-ls -l /dev/tempsensor         # crw-rw-rw- ... character device
-cat /dev/tempsensor           # current temperature in milli-°C, e.g. 36250 = 36.25 °C
-cat /proc/tempsensor          # register dump
-lsmod | grep tempsensor       # driver is loaded
-```
-
-Example `/proc/tempsensor` output:
-
-```
-Virtual Temperature Sensor - register dump
-CTRL     : 0x00000001  (enable=1 cooling=0)
-STATUS   : 0x00000007  (data_ready=1 overheat=1 enabled=1 cooling=0)
-DATA     : 69068 m°C  (69.068 °C)
-INTERVAL : 1000 ms
-STATS    : min=35610 max=69138 count=38
-DEVICE   : major=239 minor=0 open_count=0
-```
-
-### 4. Run the driver tests
-
-```bash
-cd ../tests
-g++ -std=c++17 -Wall -I../driver driver_test.cpp -o driver_test
-./driver_test                 # Result: 11 passed, 0 failed
-```
-
-### 5. Build and run the monitoring application
+### Step 3 – Build and run the application
 
 ```bash
 cd ../app
-make                          # builds ./tempmon
-./tempmon                     # driver must be loaded
+make
+./tempmon
 ```
 
-Menu options:
+You will see this menu:
 
 ```
- 1. Start monitoring          7. Cooling fan control (auto / manual)
+ 1. Start monitoring          7. Cooling fan control
  2. Stop monitoring           8. Sampling interval
  3. Live view                 9. Driver status (registers)
  4. Statistics               10. System information
@@ -197,99 +176,96 @@ Menu options:
  6. Alert thresholds          0. Exit
 ```
 
-Demo tip: set the interval to **200 ms** (option 8), then open the **live view** (option 3) to watch a CRITICAL reading switch the fan on and the temperature return to NORMAL. Press **Ctrl+C** at any time for a safe shutdown; events are saved in `tempmon.log`.
+**Quick demo:**
+1. Press **8** and enter **200** (faster readings, so it heats up sooner)
+2. Press **3** for the live view and wait for a red **CRITICAL** line – the fan turns **ON** by itself, and turns **OFF** once the temperature is normal again
+3. Press **Enter** to go back, then **4** for statistics
+4. Press **Ctrl+C** to exit safely, then run `cat tempmon.log` to see the saved events
 
-### 6. Run the application tests
+### Step 4 – Run the tests
 
 ```bash
-make test                     # Result: 21 passed, 0 failed (no driver needed)
+make test                     # 21 app tests (works without the driver)
+cd ../tests
+g++ -std=c++17 -Wall -I../driver driver_test.cpp -o driver_test
+./driver_test                 # 11 driver tests (driver must be loaded)
 ```
 
-### 7. Unload the driver
+### Step 5 – Unload the driver when finished
 
 ```bash
 sudo rmmod tempsensor
 ```
 
-> After changing the driver source: `sudo rmmod tempsensor` → `make` → `sudo insmod tempsensor.ko`.
-> After a reboot the driver must be loaded again with `insmod`.
+> After restarting the computer, load the driver again with `sudo insmod tempsensor.ko`.
 
-## 🔌 Driver Interface
+## 🖼️ Screenshots
 
-| Call | Description |
-|------|-------------|
-| `read()` | Latest temperature as text in milli-°C |
-| `ioctl(TS_IOC_SET_INTERVAL, &u32)` | Sampling interval, 100–10000 ms (else `EINVAL`) |
-| `ioctl(TS_IOC_GET_INTERVAL, &u32)` | Current interval |
-| `ioctl(TS_IOC_GET_STATUS, &u32)` | STATUS register |
-| `ioctl(TS_IOC_GET_STATS, &stats)` | Minimum, maximum, reading count |
-| `ioctl(TS_IOC_RESET)` | Clear statistics, fan off |
-| `ioctl(TS_IOC_SET_ENABLE, &u32)` | Sampling on (1) / off (0) |
-| `ioctl(TS_IOC_SET_COOLING, &u32)` | Cooling fan on (1) / off (0) |
+| Driver loaded | Driver registers (overheating) |
+|---|---|
+| ![Driver load](docs/screenshots/02_driver_load.png) | ![Registers](docs/screenshots/04_proc_registers.png) |
 
-**Register map**
+| Statistics | System information |
+|---|---|
+| ![Statistics](docs/screenshots/08_statistics.png) | ![System info](docs/screenshots/09_system_info.png) |
 
-| Register | Bits |
-|----------|------|
-| CTRL | bit 0 ENABLE · bit 1 COOLING |
-| STATUS | bit 0 DATA_READY · bit 1 OVERHEAT (> 60 °C) · bit 2 ENABLED · bit 3 COOLING |
-| DATA | temperature, signed milli-°C |
-| INTERVAL | sampling period, ms |
+| Safe shutdown with Ctrl+C | All tests passing |
+|---|---|
+| ![Ctrl+C](docs/screenshots/10_ctrl_c_Shutting_down.png) | ![Tests](docs/screenshots/12_app_tests.png) |
+
+All screenshots: [`docs/screenshots/`](docs/screenshots)
 
 ## 🧪 Testing
 
-| Category | Tests | Passed |
-|----------|-------|--------|
-| Driver – manual | 13 | 13 |
-| Driver – automated (`driver_test`) | 11 | 11 |
-| Application – unit (`app_test`) | 15 | 15 |
-| Application – integration (`app_test`) | 6 | 6 |
-| System (app + driver) | 11 | 11 |
+| Type | What it checks | Passed |
+|------|----------------|--------|
+| Driver – manual | building, loading, device file, overheat flag, unloading | 13 / 13 |
+| Driver – automatic | every command, wrong inputs rejected, fan cools the device | 11 / 11 |
+| Unit tests | each class on its own (alerts, fan rules, statistics…) | 15 / 15 |
+| Integration tests | parts working together (thread + logger + fan) | 6 / 6 |
+| System tests | the full app running with the real driver | 11 / 11 |
+| **Total** | | **56 / 56** |
 
-Full results: [`docs/05_Testing.md`](docs/05_Testing.md)
+Details: [`docs/05_Testing.md`](docs/05_Testing.md)
 
-**Driver tests**
+## 🧠 Concepts Used
 
-| Test | Checks |
-|------|--------|
-| T1–T2 | Device opens; reading is within sensor limits |
-| T3–T5 | Interval get/set; invalid interval rejected with `EINVAL` |
-| T6–T7 | Reset clears statistics; readings are counted, min ≤ max |
-| T8–T9 | Status register; disabling stops sampling |
-| T10 | Unknown `ioctl` rejected with `ENOTTY` |
-| T11 | Cooling fan brings the temperature below 40 °C |
+| Topic | Where it is used |
+|-------|------------------|
+| **Linux** | Ubuntu, terminal commands, `/dev`, `/proc`, loading drivers with `insmod` |
+| **Device drivers** | character device, `read` and `ioctl` handlers, kernel timer, lock |
+| **System programming** | system calls, threads, mutex, signals (Ctrl+C), `fork` + `pipe` |
+| **C++** | classes, interface, inheritance, STL containers, file handling |
+| **Computer architecture** | device registers, user mode vs kernel mode, CPU / cache / memory info |
 
-Current result: **11 passed, 0 failed** on kernel 7.0.0-30-generic.
+## 📚 Project Documents (6 Stages)
 
-## 📚 Documentation (6 stages)
-
-| Stage | Document | Status |
-|-------|----------|--------|
-| 1 – Project Introduction | [`docs/01_Introduction.md`](docs/01_Introduction.md) | ✅ |
-| 2 – Requirements & Development Plan | [`docs/02_PRD.md`](docs/02_PRD.md) | ✅ |
-| 3 – System Design & Architecture | [`docs/03_Design.md`](docs/03_Design.md) | ✅ |
-| 4 – Initial Implementation & Prototype | [`docs/04_Prototype_Log.md`](docs/04_Prototype_Log.md) | ✅ |
-| 5 – Testing, Integration & Improvement | [`docs/05_Testing.md`](docs/05_Testing.md) | ✅ |
-| 6 – Final Implementation & Presentation | [`docs/06_Final_Summary.md`](docs/06_Final_Summary.md) | ✅ |
+| Stage | Document |
+|-------|----------|
+| 1. Project Introduction | [`docs/01_Introduction.md`](docs/01_Introduction.md) |
+| 2. Requirements & Plan | [`docs/02_PRD.md`](docs/02_PRD.md) |
+| 3. Design & Architecture (UML diagrams) | [`docs/03_Design.md`](docs/03_Design.md) |
+| 4. Implementation & Prototype | [`docs/04_Prototype_Log.md`](docs/04_Prototype_Log.md) |
+| 5. Testing & Improvement | [`docs/05_Testing.md`](docs/05_Testing.md) |
+| 6. Final Summary | [`docs/06_Final_Summary.md`](docs/06_Final_Summary.md) |
 
 Daily progress: [`PROGRESS.md`](PROGRESS.md)
 
 ## 🌿 Git Workflow
 
-- `main` – stable code, tagged at the end of each stage (`stage-1`, `stage-2`, `stage-3`, …)
-- `develop` – integration branch
-- `feature/*` – one branch per module (`feature/driver`, `feature/app`)
-
-## 🔭 Future Improvements
-
-- Replace the simulated sensor with a real one (e.g. DS18B20 on a Raspberry Pi) by changing only `sensor_read_hw()` in the driver
-- Control a real fan through a GPIO pin
-- Blocking reads / `poll()` support so the application wakes up only when new data is ready
-- Several sensors (`/dev/tempsensor0`, `/dev/tempsensor1`, …) and PWM fan speed
-- Remote monitoring over the network
+- **`main`** – final, working version (tagged `stage-1` to `stage-6`)
+- **`develop`** – where finished features are combined
+- **`feature/driver`**, **`feature/app`** – one branch for each part while it was being built
 
 ## ⚠️ Limitations
 
-- Sensor and fan are simulated in the driver (approved by the trainer)
-- The application polls at a fixed interval
-- Console interface only
+- The sensor and fan are simulated, not physical
+- The app checks the temperature at fixed intervals
+- One sensor only, and a text-based (console) interface
+
+## 🔭 Future Improvements
+
+- Connect a **real temperature sensor** (for example on a Raspberry Pi) by changing one driver function
+- Control a **real fan** through a hardware pin
+- Support **several sensors** at the same time
+- Show the temperature on a **web dashboard**
